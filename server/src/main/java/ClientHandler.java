@@ -10,6 +10,7 @@ class ClientHandler implements Runnable {
     private String clientName;
     Chatters clientes;
     public ClientHandler(Socket socket,Chatters clientes) {
+
         this.clientes = clientes;
         this.clientSocket = socket;
         try {
@@ -18,6 +19,7 @@ class ClientHandler implements Runnable {
         } catch (IOException e) {
             e.printStackTrace();
         }
+
     }
 
     @Override
@@ -49,6 +51,7 @@ class ClientHandler implements Runnable {
             //si el mensaje es dirijido a un cliente en especial, se debe 
             while ((message = in.readLine()) != null) {     
               
+
               if(message.startsWith("@")){
 
                 String[] parts = message.substring(1).split(" ", 2);

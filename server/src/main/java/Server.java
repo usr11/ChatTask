@@ -15,11 +15,24 @@ public class Server {
         Chatters clientes = new Chatters();
 
         try {
-            ServerSocket serverSocket = new ServerSocket(PORT);
-            System.out.println("Servidor iniciado. Esperando clientes...");
+            //TCP PARA MENSAJES
+            ServerSocket serverSocketTCP = new ServerSocket(PORT);
+            System.out.println("Servidor iniciado. Esperando clientes...(Mensajes) TCP");
+            
+            //UDP PARA AUDIOS
+            new Thread(() -> {
+                try {
+
+                    AudioSender audioSender = new AudioSender();
+                    audioSender.start();
+
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }).start();
 
             while (true) {
-                Socket clientSocket = serverSocket.accept();
+                Socket clientSocket = serverSocketTCP.accept();
                 System.out.println("Nuevo cliente conectado: " + clientSocket);
                 //crea el objeto Runable
                 ClientHandler clientHandler = new ClientHandler(clientSocket,clientes);
@@ -30,6 +43,8 @@ public class Server {
             e.printStackTrace();
         }
     }
+
+
 
    
 }

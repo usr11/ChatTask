@@ -15,6 +15,7 @@ public class Lector implements Runnable{
             
             while ((message = in.readLine()) != null) {
                 System.out.println(message);
+                System.out.println("[1] Para mensaje - [2] Para audio - [3] Para salir");
             }
         } catch (IOException e) {
             e.printStackTrace();
