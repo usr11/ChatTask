@@ -3,9 +3,13 @@ import java.net.*;
 import java.nio.ByteBuffer;
 
 import javax.sound.sampled.AudioFormat;
+import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.DataLine;
+import javax.sound.sampled.LineUnavailableException;
+import javax.sound.sampled.TargetDataLine;
 
 public class Client {
-    private static final String SERVER_IP = "192.168.1.4";
+    private static final String SERVER_IP = "172.30.168.216";
     private static final int PORT = 6789;
 
     static Socket socket;
@@ -53,7 +57,7 @@ public class Client {
                   textMessage();
                   break;
                 case 2:
-                  audioMessage();
+                  captureSound();
                   
                   break;
 
@@ -91,58 +95,99 @@ public class Client {
     }
 
 
-    public static void audioMessage() throws Exception{
+    public static void audioMessage(byte[] audioMessage) throws Exception {
 
+        InetAddress IPAddress = InetAddress.getByName("localhost");
+        int PORT = 1205;
+        int BUFFER_SIZE = 1024 + 4;  // 4 bytes para número de paquete
+        DatagramSocket clientSocket = new DatagramSocket();
 
-      InetAddress IPAddress = InetAddress.getByName("localhost");
-      int PORT = 1205;
-      int BUFFER_SIZE = 1024 + 4;  
-      DatagramSocket clientSocket = new DatagramSocket();
-      PlayerThread playerThread;
+        // Inicializar el hilo reproductor
+        AudioFormat audioFormat = new AudioFormat(16000, 16, 1, true, false);
+        PlayerThread playerThread = new PlayerThread(audioFormat, BUFFER_SIZE);
+        playerThread.start();
 
-      AudioFormat audioFormat = new AudioFormat(16000, 16, 1, true, false);
+        // Enviar paquetes al servidor
+        int totalPackets = (int) Math.ceil((double) audioMessage.length / 1024);
+        for (int i = 0; i < totalPackets; i++) {
+            int start = i * 1024;
+            int length = Math.min(1024, audioMessage.length - start);
 
-      playerThread = new PlayerThread(audioFormat,BUFFER_SIZE);
-      playerThread.start();
+            ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
+            buffer.putInt(i); // número de paquete
+            buffer.put(audioMessage, start, length);
 
-
-      String mensaje = "Hola servidor, enviame una cancion... #" ;
-      byte[] sendData = mensaje.getBytes();
-      DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, IPAddress, PORT);
-      clientSocket.send(sendPacket);
-
-      byte[] buffer = new byte[BUFFER_SIZE];
-  
-
-      int count = 0;
-      while (true) {
-
-        DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-        clientSocket.receive(packet);
-        buffer = packet.getData();
-        ByteBuffer byteBuffer = ByteBuffer.wrap(buffer);
-
-        int packetCount = byteBuffer.getInt();
-        if (packetCount == -1) {
-
-          //System.out.println("Received last packet " + count);
-          break;
-
-        } else {
-
-          byte[] data = new byte[1024];
-          byteBuffer.get(data, 0, data.length);
-          playerThread.addBytes(data);
-          
-          //System.out.println("Received packet " + packetCount + " current: " + count);
-
+            DatagramPacket packet = new DatagramPacket(buffer.array(), buffer.position(), IPAddress, PORT);
+            clientSocket.send(packet);
         }
-        count++;
 
-      }
+        // Enviar paquete final con número de paquete = -1
+        ByteBuffer endBuffer = ByteBuffer.allocate(4);
+        endBuffer.putInt(-1);
+        DatagramPacket endPacket = new DatagramPacket(endBuffer.array(), endBuffer.position(), IPAddress, PORT);
+        clientSocket.send(endPacket);
 
-      clientSocket.close();
+        // Esperar respuesta del servidor y reproducirla
+        byte[] receiveBuffer = new byte[BUFFER_SIZE];
+        while (true) {
+            DatagramPacket responsePacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
+            clientSocket.receive(responsePacket);
 
+            ByteBuffer byteBuffer = ByteBuffer.wrap(responsePacket.getData(), 0, responsePacket.getLength());
+            int packetCount = byteBuffer.getInt();
+
+            if (packetCount == -1) {
+                System.out.println("Cliente: audio final recibido.");
+                break;
+            } else {
+                byte[] data = new byte[responsePacket.getLength() - 4];
+                byteBuffer.get(data, 0, data.length);
+                playerThread.addBytes(data);
+            }
+        }
+
+        clientSocket.close();
+    }
+
+
+
+    public static void captureSound() throws Exception {
+      AudioFormat format = new AudioFormat(44100.0f, 16, 1, true, false);
+        DataLine.Info info = new DataLine.Info(TargetDataLine.class, format);
+
+        if (!AudioSystem.isLineSupported(info)) {
+            System.out.println("El micrófono no es compatible.");
+            return;
+        }
+
+        try {
+            TargetDataLine microphone = (TargetDataLine) AudioSystem.getLine(info);
+            microphone.open(format);
+            microphone.start();
+
+            System.out.println("Capturando audio por 5 segundo");
+
+            byte[] buffer = new byte[4096];
+            ByteArrayOutputStream outMic = new ByteArrayOutputStream();
+
+            // Captura por 5 segundos
+            long startTime = System.currentTimeMillis();
+            while (System.currentTimeMillis() - startTime < 5000) {
+                int bytesRead = microphone.read(buffer, 0, buffer.length);
+                outMic.write(buffer, 0, bytesRead);
+            }
+
+            microphone.stop();
+            microphone.close();
+            byte[] audioBytes = outMic.toByteArray();
+
+            System.out.println("Audio capturado de " + audioBytes.length);
+
+            audioMessage(audioBytes);
+
+        } catch (LineUnavailableException e) {
+            e.printStackTrace();
+        }
     }
 
 
