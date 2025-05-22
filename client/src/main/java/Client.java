@@ -9,7 +9,7 @@ import javax.sound.sampled.LineUnavailableException;
 import javax.sound.sampled.TargetDataLine;
 
 public class Client {
-    private static final String SERVER_IP = "172.30.168.216";
+    private static final String SERVER_IP = "172.20.10.3";
     private static final int PORT = 6789;
 
     static Socket socket;
@@ -28,107 +28,87 @@ public class Client {
             in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
             
             while ((message = in.readLine()) != null) {
-                //repetir el ciclo hasta que no ingrese un nombre valido
                 if (message.startsWith("SUBMITNAME")) {
                     System.out.print("Ingrese nombre de usuario: ");
                     String name = userInput.readLine();
                     out.println(name);
-                }
-                else if (message.startsWith("NAMEACCEPTED")) {
+                } else if (message.startsWith("NAMEACCEPTED")) {
                     System.out.println("Nombre aceptado!!");
-                    break;}
+                    break;
+                }
             }
-                   
-            //creamos el objeto lector e iniciamos el hilo
+            
             Lector lector = new Lector(in);
             new Thread(lector).start();
 
-            
             int option = 0;
             System.out.println("[1] Para mensaje - [2] Para audio - [3] Para salir");
             
-            while(option != 3) {
+            while (option != 3) {
+                String optionInput = userInput.readLine();
+                option = Integer.parseInt(optionInput);
 
-              String optionInput = userInput.readLine();
-              option = Integer.parseInt(optionInput);
-
-              switch (option) {
-                case 1:
-                  textMessage();
-                  break;
-                case 2:
-                  captureSound();
-                  
-                  break;
-
-                case 3:
-                  System.out.println("Hasta pronto...");
-
-                  break;
-                
-                default:
-                  System.out.println("Opcion no valida");
-
-                  break;
-              }
-
-              
-
+                switch (option) {
+                    case 1:
+                        textMessage();
+                        break;
+                    case 2:
+                        captureSound();
+                        break;
+                    case 3:
+                        System.out.println("Hasta pronto...");
+                        break;
+                    default:
+                        System.out.println("Opcion no valida");
+                        break;
+                }
             }
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    public static void textMessage(){
-      try {
-        //estar atento a la entrada del usuario          
-        System.out.println("Ingrese el mensaje a enviar (@nombre para enviar por privado)");
-        if ((message = userInput.readLine()) != null) {
-            System.out.println("Ingrese el mensaje (@nombre para enviar por privado)");
-            out.println(message);
+    public static void textMessage() {
+        try {
+            System.out.println("Ingrese el mensaje a enviar (@nombre para enviar por privado)");
+            if ((message = userInput.readLine()) != null) {
+                out.println(message);
+            }
+        } catch (IOException e) {
+            System.out.println("Error al leer el mensaje: " + e.getMessage());
         }
-
-      } catch (IOException e){
-        System.out.println("Error al leer el menasaje:" + e.getMessage());
-      }
     }
 
-
     public static void audioMessage(byte[] audioMessage) throws Exception {
-
         InetAddress IPAddress = InetAddress.getByName("localhost");
         int PORT = 1205;
-        int BUFFER_SIZE = 1024 + 4;  // 4 bytes para número de paquete
+        int BUFFER_SIZE = 1024 + 4;
         DatagramSocket clientSocket = new DatagramSocket();
 
-        // Inicializar el hilo reproductor
         AudioFormat audioFormat = new AudioFormat(16000, 16, 1, true, false);
         PlayerThread playerThread = new PlayerThread(audioFormat, BUFFER_SIZE);
         playerThread.start();
 
-        // Enviar paquetes al servidor
         int totalPackets = (int) Math.ceil((double) audioMessage.length / 1024);
         for (int i = 0; i < totalPackets; i++) {
             int start = i * 1024;
             int length = Math.min(1024, audioMessage.length - start);
 
             ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
-            buffer.putInt(i); // número de paquete
+            buffer.putInt(i);
             buffer.put(audioMessage, start, length);
 
             DatagramPacket packet = new DatagramPacket(buffer.array(), buffer.position(), IPAddress, PORT);
             clientSocket.send(packet);
         }
 
-        // Enviar paquete final con número de paquete = -1
         ByteBuffer endBuffer = ByteBuffer.allocate(4);
         endBuffer.putInt(-1);
         DatagramPacket endPacket = new DatagramPacket(endBuffer.array(), endBuffer.position(), IPAddress, PORT);
         clientSocket.send(endPacket);
 
-        // Esperar respuesta del servidor y reproducirla
         byte[] receiveBuffer = new byte[BUFFER_SIZE];
+        int count = 0;
         while (true) {
             DatagramPacket responsePacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
             clientSocket.receive(responsePacket);
@@ -143,16 +123,16 @@ public class Client {
                 byte[] data = new byte[responsePacket.getLength() - 4];
                 byteBuffer.get(data, 0, data.length);
                 playerThread.addBytes(data);
+                System.out.println("Cliente: paquete recibido " + packetCount + " (" + count + ")");
             }
+            count++;
         }
 
         clientSocket.close();
     }
 
-
-
     public static void captureSound() throws Exception {
-      AudioFormat format = new AudioFormat(44100.0f, 16, 1, true, false);
+        AudioFormat format = new AudioFormat(44100.0f, 16, 1, true, false);
         DataLine.Info info = new DataLine.Info(TargetDataLine.class, format);
 
         if (!AudioSystem.isLineSupported(info)) {
@@ -165,12 +145,11 @@ public class Client {
             microphone.open(format);
             microphone.start();
 
-            System.out.println("Capturando audio por 5 segundo");
+            System.out.println("Capturando audio por 5 segundos...");
 
             byte[] buffer = new byte[4096];
             ByteArrayOutputStream outMic = new ByteArrayOutputStream();
 
-            // Captura por 5 segundos
             long startTime = System.currentTimeMillis();
             while (System.currentTimeMillis() - startTime < 5000) {
                 int bytesRead = microphone.read(buffer, 0, buffer.length);
@@ -181,14 +160,11 @@ public class Client {
             microphone.close();
             byte[] audioBytes = outMic.toByteArray();
 
-            System.out.println("Audio capturado de " + audioBytes.length);
+            System.out.println("Audio capturado de " + audioBytes.length + " bytes");
 
             audioMessage(audioBytes);
-
         } catch (LineUnavailableException e) {
             e.printStackTrace();
         }
     }
-
-
 }
