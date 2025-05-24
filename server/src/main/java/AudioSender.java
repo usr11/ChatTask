@@ -1,5 +1,6 @@
 import java.io.*;
 import java.net.*;
+import java.nio.ByteBuffer;
 import java.util.concurrent.ExecutionException;
 
 import javax.sound.sampled.*;
@@ -7,26 +8,45 @@ import javax.sound.sampled.*;
 
 public class AudioSender {
   
-  public static void start() throws Exception{
+public static void start() throws Exception {
+        InetAddress IPAddress = InetAddress.getByName("172.20.10.3");
+        int PORT = 1205;
+        int BUFFER_SIZE = 1024 + 4;  // 4 bytes para número de paquete
+        DatagramSocket serverSocket = new DatagramSocket(PORT, IPAddress);
 
-    InetAddress IPAddress = InetAddress.getByName("localhost");
-    String song = "song/Song1_16k.wav";
-    int PORT = 1205;
+        System.out.println("Servidor iniciado. Esperando solicitud del cliente (Audio UDP)");
 
-    DatagramSocket serverSocket = new DatagramSocket(PORT, IPAddress);
-    
-    System.out.println("Servidor iniciado. Esperando solicitud del (Audios) UDP");
+        ByteArrayOutputStream audioDataStream = new ByteArrayOutputStream();
+        byte[] receiveBuffer = new byte[BUFFER_SIZE];
+        DatagramPacket receivePacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
 
-    byte[] receiveData = new byte[1024];
-    DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
-    serverSocket.receive(receivePacket);
+        InetAddress clientAddress = null;
+        int clientPort = -1;
 
-    System.out.println("Cliente conectado... Enviando audio");
+        // Recibir paquetes hasta encontrar uno con número de secuencia -1
+        while (true) {
+            serverSocket.receive(receivePacket);
 
-    //Iniciar envio
-    PlayerSender sender = new PlayerSender(song,receivePacket,serverSocket);
-    sender.sendAudio();
+            ByteBuffer byteBuffer = ByteBuffer.wrap(receivePacket.getData(), 0, receivePacket.getLength());
+            int packetNumber = byteBuffer.getInt();
 
-  }
+            if (packetNumber == -1) {
+                System.out.println("Fin de audio recibido");
+                break;
+            }
 
+            byte[] audioPart = new byte[receivePacket.getLength() - 4];
+            byteBuffer.get(audioPart);
+            audioDataStream.write(audioPart);
+
+            // Guardar IP y puerto del cliente para enviar de vuelta
+            clientAddress = receivePacket.getAddress();
+            clientPort = receivePacket.getPort();
+        }
+
+        // Ahora reenviar el audio recibido
+        byte[] audioBytes = audioDataStream.toByteArray();
+        PlayerSender sender = new PlayerSender(audioBytes, clientAddress, clientPort, serverSocket);
+        sender.sendAudio();
+    }
 }

@@ -2,17 +2,28 @@ import java.io.*;
 import java.net.*;
 import java.nio.ByteBuffer;
 
-import javax.sound.sampled.AudioFormat;
+import javax.sound.sampled.*;
 
 public class Client {
-    private static final String SERVER_IP = "192.168.1.4";
+    private static final String SERVER_IP = "172.20.10.3";
     private static final int PORT = 6789;
+    private static final int AUDIO_PORT = 6790;
 
     static Socket socket;
     static PrintWriter out;
     static BufferedReader in;
     static BufferedReader userInput;
     static String message;
+
+    static boolean stopCapture = false;
+    static ByteArrayOutputStream byteArrayOutputStream;
+    static AudioFormat audioFormat;
+    static TargetDataLine targetDataLine;
+    static AudioInputStream audioInputStream;
+    static BufferedOutputStream audioOut = null;
+    static BufferedInputStream audioIn = null;
+    static Socket audioSocket = null;
+    static SourceDataLine sourceDataLine;
 
     public static void main(String[] args) throws Exception {
         try {
@@ -22,128 +33,131 @@ public class Client {
             userInput = new BufferedReader(new InputStreamReader(System.in));
             out = new PrintWriter(socket.getOutputStream(), true);
             in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            
+
             while ((message = in.readLine()) != null) {
-                //repetir el ciclo hasta que no ingrese un nombre valido
                 if (message.startsWith("SUBMITNAME")) {
                     System.out.print("Ingrese nombre de usuario: ");
                     String name = userInput.readLine();
                     out.println(name);
-                }
-                else if (message.startsWith("NAMEACCEPTED")) {
+                } else if (message.startsWith("NAMEACCEPTED")) {
                     System.out.println("Nombre aceptado!!");
-                    break;}
+                    break;
+                }
             }
-                   
-            //creamos el objeto lector e iniciamos el hilo
+
             Lector lector = new Lector(in);
             new Thread(lector).start();
 
-            
             int option = 0;
-            System.out.println("[1] Para mensaje - [2] Para audio - [3] Para salir");
-            
-            while(option != 3) {
+            System.out.println("[1] Para mensaje - [2] Para audio en tiempo real - [3] Para salir");
 
-              String optionInput = userInput.readLine();
-              option = Integer.parseInt(optionInput);
+            while (option != 3) {
+                String optionInput = userInput.readLine();
+                option = Integer.parseInt(optionInput);
 
-              switch (option) {
-                case 1:
-                  textMessage();
-                  break;
-                case 2:
-                  audioMessage();
-                  
-                  break;
-
-                case 3:
-                  System.out.println("Hasta pronto...");
-
-                  break;
-                
-                default:
-                  System.out.println("Opcion no valida");
-
-                  break;
-              }
-
-              
-
+                switch (option) {
+                    case 1:
+                        textMessage();
+                        break;
+                    case 2:
+                        startRealtimeAudio();
+                        break;
+                    case 3:
+                        System.out.println("Hasta pronto...");
+                        break;
+                    default:
+                        System.out.println("Opcion no valida");
+                        break;
+                }
             }
         } catch (IOException e) {
             e.printStackTrace();
         }
     }
 
-    public static void textMessage(){
-      try {
-        //estar atento a la entrada del usuario          
-        System.out.println("Ingrese el mensaje a enviar (@nombre para enviar por privado)");
-        if ((message = userInput.readLine()) != null) {
-            System.out.println("Ingrese el mensaje (@nombre para enviar por privado)");
-            out.println(message);
+    public static void textMessage() {
+        try {
+            System.out.println("Ingrese el mensaje a enviar (@nombre para enviar por privado)");
+            if ((message = userInput.readLine()) != null) {
+                out.println(message);
+            }
+        } catch (IOException e) {
+            System.out.println("Error al leer el mensaje: " + e.getMessage());
         }
-
-      } catch (IOException e){
-        System.out.println("Error al leer el menasaje:" + e.getMessage());
-      }
     }
 
+    public static void startRealtimeAudio() {
+        try {
+            audioSocket = new Socket(SERVER_IP, AUDIO_PORT);
+            audioOut = new BufferedOutputStream(audioSocket.getOutputStream());
+            audioIn = new BufferedInputStream(audioSocket.getInputStream());
 
-    public static void audioMessage() throws Exception{
+            Mixer.Info[] mixerInfo = AudioSystem.getMixerInfo();
+            System.out.println("Available mixers:");
+            for (int cnt = 0; cnt < mixerInfo.length; cnt++) {
+                System.out.println(mixerInfo[cnt].getName());
+            }
 
+            audioFormat = new AudioFormat(8000.0F, 8, 1, true, false);
 
-      InetAddress IPAddress = InetAddress.getByName("localhost");
-      int PORT = 1205;
-      int BUFFER_SIZE = 1024 + 4;  
-      DatagramSocket clientSocket = new DatagramSocket();
-      PlayerThread playerThread;
+            DataLine.Info dataLineInfo = new DataLine.Info(TargetDataLine.class, audioFormat);
+            targetDataLine = (TargetDataLine) AudioSystem.getLine(dataLineInfo);
+            targetDataLine.open(audioFormat);
+            targetDataLine.start();
 
-      AudioFormat audioFormat = new AudioFormat(16000, 16, 1, true, false);
+            Thread captureThread = new Thread(() -> {
+                byte[] tempBuffer = new byte[10000];
+                try {
+                    while (true) {
+                        int cnt = targetDataLine.read(tempBuffer, 0, tempBuffer.length);
+                        audioOut.write(tempBuffer, 0, cnt);
+                        audioOut.flush();
+                    }
+                } catch (Exception e) {
+                    System.out.println("Error capturando audio: " + e.getMessage());
+                }
+            });
+            captureThread.start();
 
-      playerThread = new PlayerThread(audioFormat,BUFFER_SIZE);
-      playerThread.start();
+            DataLine.Info dataLineInfo1 = new DataLine.Info(SourceDataLine.class, audioFormat);
+            sourceDataLine = (SourceDataLine) AudioSystem.getLine(dataLineInfo1);
+            sourceDataLine.open(audioFormat);
+            sourceDataLine.start();
 
+            Thread playThread = new Thread(() -> {
+                byte[] tempBuffer = new byte[10000];
+                try {
+                    while (audioIn.read(tempBuffer) != -1) {
+                        sourceDataLine.write(tempBuffer, 0, 10000);
+                    }
+                    sourceDataLine.drain();
+                    sourceDataLine.close();
+                } catch (IOException e) {
+                    System.out.println("Error reproduciendo audio: " + e.getMessage());
+                }
+            });
+            playThread.start();
 
-      String mensaje = "Hola servidor, enviame una cancion... #" ;
-      byte[] sendData = mensaje.getBytes();
-      DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, IPAddress, PORT);
-      clientSocket.send(sendPacket);
-
-      byte[] buffer = new byte[BUFFER_SIZE];
-  
-
-      int count = 0;
-      while (true) {
-
-        DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-        clientSocket.receive(packet);
-        buffer = packet.getData();
-        ByteBuffer byteBuffer = ByteBuffer.wrap(buffer);
-
-        int packetCount = byteBuffer.getInt();
-        if (packetCount == -1) {
-
-          //System.out.println("Received last packet " + count);
-          break;
-
-        } else {
-
-          byte[] data = new byte[1024];
-          byteBuffer.get(data, 0, data.length);
-          playerThread.addBytes(data);
-          
-          //System.out.println("Received packet " + packetCount + " current: " + count);
-
+        } catch (Exception e) {
+            System.out.println("Error en comunicación de audio: " + e.getMessage());
         }
-        count++;
+    }
+} class Lector implements Runnable {
+    private BufferedReader in;
 
-      }
-
-      clientSocket.close();
-
+    public Lector(BufferedReader in) {
+        this.in = in;
     }
 
-
+    @Override
+    public void run() {
+        String mensaje;
+        try {
+            while ((mensaje = in.readLine()) != null) {
+                System.out.println(mensaje);
+            }
+        } catch (IOException e) {
+            System.out.println("Error en Lector: " + e.getMessage());
+        }
+    }
 }
