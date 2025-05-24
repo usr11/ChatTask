@@ -20,7 +20,8 @@ public class PlayerThread extends Thread {
                     / BUFFER_SIZE;
 
             //System.out.println("Max items in queue: " + MAX_ITEMS_IN_QUEUE);
-            System.out.println("Reproducciendo audio...");
+            System.out.println("Reproduciendo audio...");
+            System.out.println("[1] Para mensaje - [2] Para audio - [3] Para salir");
             buffer = new ArrayBlockingQueue<>(MAX_ITEMS_IN_QUEUE, true);
             sourceDataLine = AudioSystem.getSourceDataLine(audioFormat);
             sourceDataLine.open(audioFormat);
