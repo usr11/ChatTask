@@ -10,7 +10,7 @@ import javax.sound.sampled.LineUnavailableException;
 import javax.sound.sampled.TargetDataLine;
 
 public class Client {
-  private static final String SERVER_IP = "192.168.1.4";
+  private static final String SERVER_IP = "localhost";
   private static final int PORT = 6789;
 
   static Socket socket;
@@ -43,7 +43,7 @@ public class Client {
       new Thread(lector).start();
 
       int option = 0;
-      System.out.println("[1] Para mensaje - [2] Para audio - [3] Para salir - [4] Para salir");
+      System.out.println("[1] Para mensaje - [2] Para audio - [3] Para llamada - [4] Para salir");
 
       while (option != 3) {
         String optionInput = userInput.readLine();
@@ -57,7 +57,7 @@ public class Client {
             captureSound();
             break;
           case 3:
-          
+            call();
             break;
           case 4:
             System.out.println("Hasta pronto...");
@@ -78,13 +78,14 @@ public class Client {
       if ((message = userInput.readLine()) != null) {
         out.println(message);
       }
+      System.out.println("[1] Para mensaje - [2] Para audio - [3] Para salir");
     } catch (IOException e) {
       System.out.println("Error al leer el mensaje: " + e.getMessage());
     }
   }
 
   public static void audioMessage(byte[] audioMessage) throws Exception {
-    InetAddress IPAddress = InetAddress.getByName("192.168.1.4");
+    InetAddress IPAddress = InetAddress.getByName("localhost");
     int PORT = 1205;
     int BUFFER_SIZE = 1024 + 4;
     DatagramSocket clientSocket = new DatagramSocket();
@@ -106,37 +107,6 @@ public class Client {
       DatagramPacket packet = new DatagramPacket(buffer.array(), buffer.position(), IPAddress, PORT);
       clientSocket.send(packet);
     }
-
-    // byte[] buffer = new byte[BUFFER_SIZE];
-    // int count = 0;
-
-    // while(true){
-
-    // DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-    // clientSocket.receive(packet);
-
-    // buffer = packet.getData();
-    // ByteBuffer byteBuffer = ByteBuffer.wrap(buffer);
-    // int packetCount = byteBuffer.getInt();
-
-    // if(packetCount == -1){
-    // System.out.println("Received last packet " + count);
-    // break;
-
-    // } else {
-
-    // byte[] data = new byte[1024];
-    // byteBuffer.get(data, 0, data.length);
-    // playerThread.addBytes(data);
-    // System.out.println("Received packet " + packetCount + " current: " + count);
-
-    // }
-
-    // count++;
-
-    // }
-
-    // clientSocket.close();
 
     ByteBuffer endBuffer = ByteBuffer.allocate(4);
     endBuffer.putInt(-1);
@@ -166,6 +136,8 @@ public class Client {
 
     clientSocket.close();
   }
+
+
 
   public static void captureSound() throws Exception {
     AudioFormat format = new AudioFormat(16000, 16, 1, true, false);
@@ -215,4 +187,11 @@ public class Client {
 
     audioMessage(audioBytes);
   }
+
+
+
+  public static void call() throws Exception {
+
+  }
+
 }

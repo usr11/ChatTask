@@ -7,7 +7,7 @@ import javax.sound.sampled.*;
 
 public class AudioSender {
   public static void start() throws Exception {
-    InetAddress IPAddress = InetAddress.getByName("192.168.1.4");
+    InetAddress IPAddress = InetAddress.getByName("localhost");
     int PORT = 1205;
     int BUFFER_SIZE = 1024 + 4;
     DatagramSocket serverSocket = new DatagramSocket(PORT, IPAddress);
